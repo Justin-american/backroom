@@ -29,11 +29,14 @@
 
     <!-- HUD -->
     <div id="hud" class="hidden">
-      <div id="hud-hint">Move: <b>WASD</b> &nbsp;&middot;&nbsp; Look: <b>Mouse</b> &nbsp;&middot;&nbsp; Sprint: <b>Shift</b> &nbsp;&middot;&nbsp; Interact: <b>E</b></div>
+      <div id="hud-hint">Move: <b>WASD</b> &nbsp;&middot;&nbsp; Look: <b>Mouse</b> &nbsp;&middot;&nbsp; Sprint: <b>Shift</b> &nbsp;&middot;&nbsp; Flashlight: <b>F</b> &nbsp;&middot;&nbsp; Interact: <b>E</b></div>
     </div>
 
     <!-- Exit prompt -->
     <div id="exit-prompt" class="hidden">Press <b>E</b> to call the elevator</div>
+
+    <!-- Transient notice (e.g. power outage) -->
+    <div id="notice" class="hidden"></div>
 
     <!-- Start / pause overlay -->
     <div id="overlay" class="overlay">
@@ -49,6 +52,7 @@
           <li><span>W A S D</span> Move</li>
           <li><span>Mouse</span> Look around</li>
           <li><span>Shift</span> Sprint</li>
+          <li><span>F</span> Flashlight</li>
           <li><span>E</span> Interact / use exit</li>
           <li><span>Esc</span> Release mouse</li>
         </ul>

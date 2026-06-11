@@ -60,11 +60,12 @@ export class EventSystem {
     this.effect = {
       type: 'blackout', t: 0,
       fadeOut: 0.15,
-      hold: 0.8 + Math.random() * 1.6,
-      fadeIn: 0.6,
+      hold: 55 + Math.random() * 12,   // power stays off ~55-67s
+      fadeIn: 1.2,
     };
     this.audio.flickerBuzz();
     this.audio.setPowerState(false);
+    if (this.onBlackout) this.onBlackout(true);
   }
 
   update(dt) {
@@ -94,6 +95,7 @@ export class EventSystem {
           this.lightLevel = 0.02 + k * 0.98;
         } else {
           this.audio.setPowerState(true);
+          if (this.onBlackout) this.onBlackout(false);
           this._endEffect();
         }
       }

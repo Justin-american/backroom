@@ -615,9 +615,12 @@ export class Level0 {
     const doorGeo = new THREE.BoxGeometry(leafW, OPEN_H, 0.08);
     const leftDoor = addMesh(doorGeo, doorMat, -leafW / 2, OPEN_H / 2, frontZ);
     const rightDoor = addMesh(doorGeo, doorMat, leafW / 2, OPEN_H / 2, frontZ);
-    // seam line between the leaves
-    addMesh(new THREE.BoxGeometry(0.02, OPEN_H, 0.09), darkSteelMat,
-      0, OPEN_H / 2, frontZ);
+    // seam line where the leaves meet: parented to the left leaf so it slides
+    // away with the doors instead of hanging in the middle of the opening.
+    const seam = new THREE.Mesh(
+      new THREE.BoxGeometry(0.02, OPEN_H, 0.09), darkSteelMat);
+    seam.position.set(leafW / 2, 0, 0);
+    leftDoor.add(seam);
 
     // --- interior cabin shell (back + sides + ceiling + floor) -------------
     addMesh(new THREE.BoxGeometry(CAB_W, CAB_H, SHELL), cabinMat,

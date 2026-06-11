@@ -37,6 +37,8 @@ export class Player {
     this.bobTime = 0;
     this.baseEye = EYE_HEIGHT;
 
+    this._buildFlashlight();
+
     this._onKeyDown = this._onKeyDown.bind(this);
     this._onKeyUp = this._onKeyUp.bind(this);
     window.addEventListener('keydown', this._onKeyDown);
@@ -46,6 +48,32 @@ export class Player {
   }
 
   get object() { return this.controls.object || this.controls.getObject(); }
+
+  /**
+   * Build a head-mounted flashlight: a spotlight parented to the camera so it
+   * always points where the player looks. Off by default; toggled with `F`
+   * and most useful during a power outage.
+   */
+  _buildFlashlight() {
+    const cam = this.camera;
+    this.flashlight = new THREE.SpotLight(
+      0xfff3d6, 0, 28, Math.PI / 6, 0.45, 1.2);
+    this.flashlight.position.set(0.2, -0.15, 0.1);
+    this.flashlightTarget = new THREE.Object3D();
+    this.flashlightTarget.position.set(0, 0, -1);
+    cam.add(this.flashlightTarget);
+    this.flashlight.target = this.flashlightTarget;
+    cam.add(this.flashlight);
+    this.flashlightOn = false;
+    this._flashlightIntensity = 6.0;
+  }
+
+  /** Toggle the flashlight on/off. */
+  toggleFlashlight() {
+    this.flashlightOn = !this.flashlightOn;
+    this.flashlight.intensity = this.flashlightOn ? this._flashlightIntensity : 0;
+    return this.flashlightOn;
+  }
 
   reset() {
     const s = this.level.spawn;
@@ -79,6 +107,7 @@ export class Player {
       case 'KeyA': case 'ArrowLeft':  this.keys.left = true; break;
       case 'KeyD': case 'ArrowRight': this.keys.right = true; break;
       case 'ShiftLeft': case 'ShiftRight': this.keys.sprint = true; break;
+      case 'KeyF': if (this.enabled) this.toggleFlashlight(); break;
     }
   }
 
@@ -190,6 +219,8 @@ export class Player {
   dispose() {
     window.removeEventListener('keydown', this._onKeyDown);
     window.removeEventListener('keyup', this._onKeyUp);
+    if (this.flashlight) this.camera.remove(this.flashlight);
+    if (this.flashlightTarget) this.camera.remove(this.flashlightTarget);
     this.controls.dispose?.();
   }
 }

@@ -35,10 +35,21 @@ let started = false;
 const clock = new THREE.Clock();
 
 function buildLevel() {
-  level = new Level0(scene, 1337);
+  // Random seed every playthrough so no two layouts are the same.
+  // Arrows are generated from the layout, so they always lead to the exit.
+  const seed = (Math.random() * 0xffffffff) >>> 0;
+  level = new Level0(scene, seed);
   scene.add(camera);
   player = new Player(camera, renderer.domElement, level);
   events = new EventSystem(level, audio);
+  // Power outage: warn the player so they reach for the flashlight.
+  events.onBlackout = (off) => {
+    if (off) {
+      ui.showNotice('Power outage &mdash; press <b>F</b> for your flashlight');
+    } else {
+      ui.hideNotice();
+    }
+  };
   attachLockEvents();   // wire pointer-lock events for the new controls
 }
 
@@ -72,6 +83,7 @@ ui.onStart(() => beginGameplay());
 ui.onRestart(() => {
   completed = false;
   resetElevator();
+  ui.hideNotice();
   teardownLevel();
   buildLevel();
   events.start();
@@ -133,6 +145,7 @@ function callElevator() {
 function rideUp() {
   elevatorState = 'rising';
   ui.hideExitPrompt();
+  ui.hideNotice();
   if (events) events.stop();
   if (level) level.setLightLevel(1.0);
   riseStartY = player.object.position.y;

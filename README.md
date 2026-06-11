@@ -14,11 +14,12 @@ No frameworks, no TypeScript, no build tools, no npm install required.
 - **Mouse look** via Pointer Lock
 - **Sprinting** — hold `Shift`
 - **Tile-based collision detection**
-- **Procedurally generated Level 0** — yellow walls, stained carpet,
-  fluorescent ceiling panels, long hallways and open rooms
+- **Randomly generated levels** — every playthrough has a unique layout;
+  guidance arrows are regenerated each time so they always lead to the exit
 - **Atmosphere** — warm fog, flat liminal lighting, realistic scale
-- **Random event system** — light flickers, temporary blackouts and
-  distant/ambient sounds (subtle and rare)
+- **Random event system** — light flickers, distant/ambient sounds and a
+  prolonged power outage (~1 minute of darkness)
+- **Flashlight** — toggle with `F`; essential for surviving a power outage
 - **Procedural audio** — a constant fluorescent hum and stingers generated
   with the Web Audio API (no audio files needed)
 - **Elevator exit** — call the elevator with `E`, wait for it to arrive
@@ -33,6 +34,7 @@ No frameworks, no TypeScript, no build tools, no npm install required.
 | Move | `W` `A` `S` `D` / Arrow keys |
 | Look | Mouse |
 | Sprint | `Shift` |
+| Flashlight | `F` |
 | Interact / use exit | `E` |
 | Release mouse | `Esc` |
 

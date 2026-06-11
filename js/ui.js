@@ -10,6 +10,7 @@ export class UI {
     this.crosshair    = document.getElementById('crosshair');
     this.hud          = document.getElementById('hud');
     this.exitPrompt   = document.getElementById('exit-prompt');
+    this.notice       = document.getElementById('notice');
     this.overlay      = document.getElementById('overlay');
     this.complete     = document.getElementById('complete-screen');
     this.startButton  = document.getElementById('start-button');
@@ -50,6 +51,17 @@ export class UI {
 
   hideExitPrompt() {
     this.exitPrompt.classList.add('hidden');
+  }
+
+  /** Show a transient on-screen notice (HTML allowed). */
+  showNotice(html) {
+    if (!this.notice) return;
+    this.notice.innerHTML = html;
+    this.notice.classList.remove('hidden');
+  }
+
+  hideNotice() {
+    if (this.notice) this.notice.classList.add('hidden');
   }
 
   showComplete() {
