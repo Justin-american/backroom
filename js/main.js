@@ -6,6 +6,7 @@
 
 import * as THREE from 'three';
 import { Level0 } from './level0.js';
+import { Level1 } from './level1.js';
 import { Player } from './player.js';
 import { EventSystem } from './events.js';
 import { AudioEngine } from './audio.js';
@@ -29,27 +30,35 @@ const camera = new THREE.PerspectiveCamera(
 const ui = new UI();
 const audio = new AudioEngine();
 let level, player, events;
+let levelIndex = 0;        // 0 = The Lobby, 1 = Office Complex
 let completed = false;
 let started = false;
+let transitioning = false;
+let transitionedToL1 = false;
 
 const clock = new THREE.Clock();
 
 function buildLevel() {
-  // Random seed every playthrough so no two layouts are the same.
-  // Arrows are generated from the layout, so they always lead to the exit.
-  const seed = (Math.random() * 0xffffffff) >>> 0;
-  level = new Level0(scene, seed);
+  if (levelIndex === 1) {
+    level = new Level1(scene, ui, audio);
+    events = null;          // Level 1 runs its own subtle office ambience
+  } else {
+    // Random seed every playthrough so no two layouts are the same.
+    // Arrows are generated from the layout, so they always lead to the exit.
+    const seed = (Math.random() * 0xffffffff) >>> 0;
+    level = new Level0(scene, seed);
+    events = new EventSystem(level, audio);
+    // Power outage: warn the player so they reach for the flashlight.
+    events.onBlackout = (off) => {
+      if (off) {
+        ui.showNotice('Power outage &mdash; press <b>F</b> for your flashlight');
+      } else {
+        ui.hideNotice();
+      }
+    };
+  }
   scene.add(camera);
   player = new Player(camera, renderer.domElement, level);
-  events = new EventSystem(level, audio);
-  // Power outage: warn the player so they reach for the flashlight.
-  events.onBlackout = (off) => {
-    if (off) {
-      ui.showNotice('Power outage &mdash; press <b>F</b> for your flashlight');
-    } else {
-      ui.hideNotice();
-    }
-  };
   attachLockEvents();   // wire pointer-lock events for the new controls
 }
 
@@ -82,11 +91,16 @@ ui.onStart(() => beginGameplay());
 
 ui.onRestart(() => {
   completed = false;
+  transitioning = false;
+  transitionedToL1 = false;
   resetElevator();
   ui.hideNotice();
+  ui.hideThought();
+  ui.hideInteract();
   teardownLevel();
+  levelIndex = 0;
   buildLevel();
-  events.start();
+  if (events) events.start();
   ui.hideComplete();
   ui.setReady();
   beginGameplay();
@@ -124,6 +138,11 @@ const CALL_DELAY = 3.0;   // seconds before the car arrives
 window.addEventListener('keydown', (e) => {
   if (e.code !== 'KeyE' || !player || !player.enabled || completed ||
       player.mode !== 'walk') return;
+
+  if (levelIndex === 1) {
+    if (level && level.interact) level.interact(player);
+    return;
+  }
 
   if (elevatorState === 'idle' && nearExit) {
     callElevator();
@@ -195,17 +214,51 @@ function updateElevator(dt) {
       if (player.mode === 'roof') {       // reached the target height
         audio.elevatorChime();
         elevatorState = 'arrived';
+        if (!transitionedToL1) {
+          transitionedToL1 = true;
+          transitionToLevel1();
+        }
       }
       break;
     }
     case 'arrived': {
-      // Doors reopen at the top; the player is now free to step out and walk
-      // around on the blank second floor. No "level complete" screen.
+      // Doors are open at the top; the transition to Level 1 is underway.
       level.setElevatorDoors(true, dt);
       ui.hideExitPrompt();
       break;
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Level transition: ride out of Level 0 -> arrive in Level 1 (Office Complex)
+// ---------------------------------------------------------------------------
+async function transitionToLevel1() {
+  transitioning = true;
+  if (player) player.enabled = false;
+  ui.hideExitPrompt();
+  ui.hideNotice();
+  await ui.fadeOut();
+
+  if (events) events.stop();
+  teardownLevel();
+  levelIndex = 1;
+  buildLevel();
+
+  // Resume control (pointer lock persists across the transition).
+  player.enabled = true;
+  await ui.fadeIn();
+  transitioning = false;
+  if (level && level.begin) level.begin();
+}
+
+function completeLevel1() {
+  completed = true;
+  ui.setComplete('LEVEL&nbsp;1&nbsp;COMPLETE',
+    'The elevator doors close. The office falls away beneath you&hellip;<br />' +
+    '<em>To be continued.</em>', 'Play again from Level 0');
+  ui.showComplete();
+  if (player) player.unlock();
 }
 
 // ---------------------------------------------------------------------------
@@ -225,14 +278,22 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const elapsed = clock.elapsedTime;
 
-  if (player && player.enabled) {
+  if (player && player.enabled && !transitioning) {
     player.update(dt);
-    events.update(dt);
+    if (events) events.update(dt);
 
-    if (!completed) updateElevator(dt);
+    if (levelIndex === 1) {
+      if (!completed && level && level.update) {
+        const done = level.update(dt, player, camera, elapsed);
+        if (done) completeLevel1();
+      }
+    } else {
+      if (!completed) updateElevator(dt);
+      if (level) level.update(dt, camera.position, elapsed);
+    }
+  } else if (levelIndex === 0 && level) {
+    level.update(dt, camera.position, elapsed);
   }
-
-  if (level) level.update(dt, camera.position, elapsed);
 
   renderer.render(scene, camera);
 }
@@ -245,5 +306,7 @@ window.__backrooms = {
   get level() { return level; },
   get player() { return player; },
   get events() { return events; },
+  get levelIndex() { return levelIndex; },
   forceStart() { if (player) { player.enabled = true; started = true; if (events) events.start(); ui.enterGameplay(); } },
+  gotoLevel1() { if (!transitionedToL1) { transitionedToL1 = true; transitionToLevel1(); } },
 };

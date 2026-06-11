@@ -187,6 +187,105 @@ export class AudioEngine {
     this._buzzGain.gain.linearRampToValueAtTime(on ? 0.015 : 0.0, now + 0.2);
   }
 
+  /** A single old-fashioned desk-phone ring (two short bursts of a warble). */
+  phoneRing() {
+    if (!this._ready()) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const burst = (start) => {
+      const o = ctx.createOscillator();
+      o.type = 'square';
+      // warble between two close tones
+      o.frequency.setValueAtTime(1000, now + start);
+      const lfo = ctx.createOscillator();
+      lfo.type = 'sine';
+      lfo.frequency.value = 20;
+      const lfoGain = ctx.createGain();
+      lfoGain.gain.value = 220;
+      lfo.connect(lfoGain).connect(o.frequency);
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 1400;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, now + start);
+      g.gain.linearRampToValueAtTime(0.05, now + start + 0.03);
+      g.gain.setValueAtTime(0.05, now + start + 0.32);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + start + 0.4);
+      o.connect(filter).connect(g).connect(this.master);
+      lfo.start(now + start); o.start(now + start);
+      lfo.stop(now + start + 0.45); o.stop(now + start + 0.45);
+    };
+    burst(0.0);
+    burst(0.6);
+  }
+
+  /** A few seconds of a printer working: a low motor whirr plus paper ticks. */
+  printerNoise() {
+    if (!this._ready()) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const dur = 2.6 + Math.random() * 1.4;
+
+    // motor whirr (filtered noise)
+    const noise = ctx.createBufferSource();
+    noise.buffer = this._noiseBuffer(Math.ceil(dur));
+    const nf = ctx.createBiquadFilter();
+    nf.type = 'bandpass';
+    nf.frequency.value = 240;
+    nf.Q.value = 1.2;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.0001, now);
+    ng.gain.linearRampToValueAtTime(0.05, now + 0.2);
+    ng.gain.setValueAtTime(0.05, now + dur - 0.3);
+    ng.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+    noise.connect(nf).connect(ng).connect(this.master);
+    noise.start(now);
+    noise.stop(now + dur);
+
+    // rhythmic paper feed ticks
+    const ticks = Math.floor(dur / 0.18);
+    for (let i = 0; i < ticks; i++) {
+      const t = now + 0.2 + i * 0.18;
+      const o = ctx.createOscillator();
+      o.type = 'square';
+      o.frequency.value = 1200 + Math.random() * 200;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.02, t + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+      o.connect(g).connect(this.master);
+      o.start(t); o.stop(t + 0.06);
+    }
+  }
+
+  /** A brief metallic vent rattle. */
+  ventRattle() {
+    if (!this._ready()) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const dur = 0.5 + Math.random() * 0.5;
+    const noise = ctx.createBufferSource();
+    noise.buffer = this._noiseBuffer(1);
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = 1800;
+    f.Q.value = 6;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.linearRampToValueAtTime(0.03, now + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+    let node = noise.connect(f).connect(g);
+    if (ctx.createStereoPanner) {
+      const pan = ctx.createStereoPanner();
+      pan.pan.value = Math.random() * 2 - 1;
+      g.connect(pan).connect(this.master);
+    } else {
+      g.connect(this.master);
+    }
+    noise.start(now);
+    noise.stop(now + dur + 0.05);
+  }
+
   _ready() {
     return this.enabled && this.started && this.ctx && this.ctx.state === 'running';
   }

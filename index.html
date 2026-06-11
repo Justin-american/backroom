@@ -24,9 +24,11 @@
 
   <!-- UI overlays (managed by js/ui.js) -->
   <div id="ui-root">
+    <!-- Fullscreen fade (used for level transitions) -->
+    <div id="fade"></div>
+
     <!-- Crosshair -->
     <div id="crosshair" class="hidden">+</div>
-
     <!-- HUD -->
     <div id="hud" class="hidden">
       <div id="hud-hint">Move: <b>WASD</b> &nbsp;&middot;&nbsp; Look: <b>Mouse</b> &nbsp;&middot;&nbsp; Sprint: <b>Shift</b> &nbsp;&middot;&nbsp; Flashlight: <b>F</b> &nbsp;&middot;&nbsp; Interact: <b>E</b></div>
@@ -34,6 +36,15 @@
 
     <!-- Exit prompt -->
     <div id="exit-prompt" class="hidden">Press <b>E</b> to call the elevator</div>
+
+    <!-- Interaction prompt (object name + action, shown when looking at an item) -->
+    <div id="interact-prompt" class="hidden">
+      <div id="interact-name"></div>
+      <div id="interact-action"></div>
+    </div>
+
+    <!-- Subtitle-style "thought" line (bottom-center, fades in/out) -->
+    <div id="thought" class="hidden"></div>
 
     <!-- Transient notice (e.g. power outage) -->
     <div id="notice" class="hidden"></div>
