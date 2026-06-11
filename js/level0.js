@@ -46,6 +46,7 @@ export class Level0 {
     this.spawn = new THREE.Vector3(0, 1.7, 0);
     this.spawnYaw = 0;
     this.exit = { position: new THREE.Vector3(), radius: 2.2, mesh: null };
+    this.ceilingHeight = WALL_H;
 
     this._generateGrid();
     this._buildTextures();
@@ -454,7 +455,16 @@ export class Level0 {
     const ex = far[0] * TILE + TILE / 2;
     const ez = far[1] * TILE + TILE / 2;
     this.exit.position.set(ex, 0, ez);
-    this._buildExitDoor(ex, ez);
+
+    // Pick an open neighbour tile so the elevator's doors face open space the
+    // player can actually walk in from (rather than facing into a wall).
+    let facing = new THREE.Vector3(0, 0, -1);
+    for (const [dx, dy] of dirs) {
+      const nx = far[0] + dx, ny = far[1] + dy;
+      if (nx < 0 || ny < 0 || nx >= this.mapW || ny >= this.mapH) continue;
+      if (this.grid[ny][nx] === 0) { facing.set(dx, 0, dy); break; }
+    }
+    this._buildElevator(ex, ez, facing);
 
     this._placeArrows(start, far);
   }
@@ -539,42 +549,135 @@ export class Level0 {
     }
   }
 
-  _buildExitDoor(x, z) {
+  // --------------------------------------------------------------------------
+  // The exit is an elevator. Its doors face open space (the `facing` dir) so
+  // the player can walk straight into it. Built around a local frame where the
+  // doors face -Z, then rotated so -Z points along `facing`.
+  // --------------------------------------------------------------------------
+  _buildElevator(x, z, facing) {
     const group = new THREE.Group();
 
-    // A bright void doorway: dark plane framed by glowing white light.
-    const frameMat = new THREE.MeshStandardMaterial({
-      color: 0xffffff, emissive: new THREE.Color(0xffffff), emissiveIntensity: 1.4,
+    // --- materials: brushed / painted metal --------------------------------
+    const steelMat = new THREE.MeshStandardMaterial({
+      color: 0xc2c6cc, metalness: 0.55, roughness: 0.4,
     });
-    const portalMat = new THREE.MeshBasicMaterial({
-      color: 0xfffdf0, side: THREE.DoubleSide, fog: false,
+    const darkSteelMat = new THREE.MeshStandardMaterial({
+      color: 0x70757c, metalness: 0.6, roughness: 0.5,
+    });
+    const doorMat = new THREE.MeshStandardMaterial({
+      color: 0xd2d6dc, metalness: 0.5, roughness: 0.32,
+    });
+    const cabinMat = new THREE.MeshStandardMaterial({
+      color: 0xbfc3c9, metalness: 0.45, roughness: 0.45,
+      emissive: new THREE.Color(0x20232a), emissiveIntensity: 0.4,
+      side: THREE.DoubleSide,
+    });
+    const panelMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff, emissive: new THREE.Color(0xfdfbe8), emissiveIntensity: 1.2,
     });
 
-    const doorW = 1.6, doorH = 2.6, frameT = 0.18;
+    // --- dimensions --------------------------------------------------------
+    const OPEN_W = 1.7;          // door opening width
+    const OPEN_H = 2.5;          // door opening height
+    const FRAME_T = 0.22;        // frame thickness / depth
+    const CAB_W = OPEN_W + 0.5;  // interior width
+    const CAB_D = 2.0;           // interior depth (recedes toward +Z)
+    const CAB_H = OPEN_H + 0.25; // interior height
+    const SHELL = 0.12;          // wall thickness
 
-    const portal = new THREE.Mesh(new THREE.PlaneGeometry(doorW, doorH), portalMat);
-    portal.position.set(0, doorH / 2, 0);
-    group.add(portal);
+    // Local Z layout: doors/front near z = 0, cabin recedes toward +Z.
+    const frontZ = 0;
+    const backZ = CAB_D;
 
-    // frame pieces
-    const mkBar = (w, h, px, py) => {
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(w, h, frameT), frameMat);
-      bar.position.set(px, py, 0);
-      return bar;
+    const addMesh = (geo, mat, px, py, pz) => {
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(px, py, pz);
+      group.add(mesh);
+      return mesh;
     };
-    group.add(mkBar(doorW + frameT * 2, frameT, 0, doorH + frameT / 2));     // top
-    group.add(mkBar(frameT, doorH + frameT, -(doorW / 2 + frameT / 2), doorH / 2)); // left
-    group.add(mkBar(frameT, doorH + frameT, (doorW / 2 + frameT / 2), doorH / 2));  // right
 
-    // a glow light at the exit so it reads as a beacon through the fog
-    const glow = new THREE.PointLight(0xffffff, 1.2, TILE * 5, 1.5);
-    glow.position.set(0, doorH / 2, 0);
+    // --- exterior door frame (header + two jambs) --------------------------
+    addMesh(new THREE.BoxGeometry(OPEN_W + FRAME_T * 2, FRAME_T, FRAME_T),
+      darkSteelMat, 0, OPEN_H + FRAME_T / 2, frontZ);                       // header
+    addMesh(new THREE.BoxGeometry(FRAME_T, OPEN_H + FRAME_T, FRAME_T),
+      darkSteelMat, -(OPEN_W / 2 + FRAME_T / 2), OPEN_H / 2, frontZ);       // left jamb
+    addMesh(new THREE.BoxGeometry(FRAME_T, OPEN_H + FRAME_T, FRAME_T),
+      darkSteelMat, (OPEN_W / 2 + FRAME_T / 2), OPEN_H / 2, frontZ);        // right jamb
+
+    // Floor indicator above the doors (lit display).
+    addMesh(new THREE.BoxGeometry(0.6, 0.28, 0.05), darkSteelMat,
+      0, OPEN_H + FRAME_T + 0.2, frontZ - FRAME_T / 2);
+    addMesh(new THREE.PlaneGeometry(0.42, 0.16), panelMat,
+      0, OPEN_H + FRAME_T + 0.2, frontZ - FRAME_T / 2 - 0.03);
+
+    // --- sliding doors (two leaves meeting in the middle) ------------------
+    const leafW = OPEN_W / 2;
+    const doorGeo = new THREE.BoxGeometry(leafW, OPEN_H, 0.08);
+    const leftDoor = addMesh(doorGeo, doorMat, -leafW / 2, OPEN_H / 2, frontZ);
+    const rightDoor = addMesh(doorGeo, doorMat, leafW / 2, OPEN_H / 2, frontZ);
+    // seam line between the leaves
+    addMesh(new THREE.BoxGeometry(0.02, OPEN_H, 0.09), darkSteelMat,
+      0, OPEN_H / 2, frontZ);
+
+    // --- interior cabin shell (back + sides + ceiling + floor) -------------
+    addMesh(new THREE.BoxGeometry(CAB_W, CAB_H, SHELL), cabinMat,
+      0, CAB_H / 2, backZ);                                                 // back wall
+    addMesh(new THREE.BoxGeometry(SHELL, CAB_H, CAB_D), cabinMat,
+      -CAB_W / 2, CAB_H / 2, CAB_D / 2);                                    // left wall
+    addMesh(new THREE.BoxGeometry(SHELL, CAB_H, CAB_D), cabinMat,
+      CAB_W / 2, CAB_H / 2, CAB_D / 2);                                     // right wall
+    addMesh(new THREE.BoxGeometry(CAB_W, SHELL, CAB_D), cabinMat,
+      0, CAB_H, CAB_D / 2);                                                 // ceiling
+    addMesh(new THREE.BoxGeometry(CAB_W, SHELL, CAB_D), steelMat,
+      0, 0.01, CAB_D / 2);                                                  // floor
+
+    // Ceiling light panel inside the cabin.
+    addMesh(new THREE.PlaneGeometry(CAB_W * 0.7, CAB_D * 0.6), panelMat,
+      0, CAB_H - SHELL - 0.02, CAB_D / 2).rotation.x = Math.PI / 2;
+
+    // Handrail along the back wall.
+    addMesh(new THREE.CylinderGeometry(0.03, 0.03, CAB_W * 0.8, 8), steelMat,
+      0, 0.95, backZ - 0.08).rotation.z = Math.PI / 2;
+
+    // Control panel + buttons on the right interior wall.
+    addMesh(new THREE.BoxGeometry(0.04, 0.7, 0.28), darkSteelMat,
+      CAB_W / 2 - SHELL - 0.02, 1.15, CAB_D * 0.35);
+    for (let i = 0; i < 4; i++) {
+      addMesh(new THREE.CylinderGeometry(0.025, 0.025, 0.02, 10), panelMat,
+        CAB_W / 2 - SHELL - 0.05, 1.0 + i * 0.1, CAB_D * 0.35).rotation.z = Math.PI / 2;
+    }
+
+    // A glow light inside so the lit cabin reads as a beacon through the fog.
+    const glow = new THREE.PointLight(0xfff6d8, 1.3, TILE * 5, 1.4);
+    glow.position.set(0, CAB_H - 0.4, CAB_D / 2);
     group.add(glow);
 
+    // --- orient so the doors face the open neighbour -----------------------
     group.position.set(x, 0, z);
+    group.rotation.y = Math.atan2(-facing.x, -facing.z);
+
     this.scene.add(group);
     this.objects.push(group);
     this.exit.mesh = group;
+
+    // Stash door leaves + their closed/open X so we can animate the ride.
+    this.exit.doors = {
+      left: leftDoor, right: rightDoor,
+      leftClosedX: -leafW / 2, rightClosedX: leafW / 2,
+      slide: leafW,            // how far each leaf travels when opening
+      t: 0,                    // 0 = closed, 1 = fully open
+    };
+  }
+
+  /** Animate the elevator doors. open=true slides them apart, false closes. */
+  setElevatorDoors(open, dt) {
+    const d = this.exit && this.exit.doors;
+    if (!d) return;
+    const target = open ? 1 : 0;
+    const step = Math.min(1, (dt || 0.016) * 1.5);
+    d.t += (target - d.t) * step;
+    d.left.position.x = d.leftClosedX - d.slide * d.t;
+    d.right.position.x = d.rightClosedX + d.slide * d.t;
   }
 
   // --------------------------------------------------------------------------
@@ -596,10 +699,9 @@ export class Level0 {
     return Math.sqrt(dx * dx + dz * dz);
   }
 
-  /** Per-frame updates (player light follows the camera, exit shimmer). */
+  /** Per-frame updates (player light follows the camera). */
   update(dt, cameraPos, elapsed) {
     if (this.playerLight) this.playerLight.position.copy(cameraPos);
-    if (this.exit.mesh) this.exit.mesh.rotation.y = Math.sin(elapsed * 0.5) * 0.05;
   }
 
   /**

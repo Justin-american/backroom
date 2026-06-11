@@ -29,6 +29,11 @@ export class Player {
     this.keys = { forward: false, back: false, left: false, right: false, sprint: false };
     this.enabled = false;
 
+    // Movement mode: 'walk' (normal), 'rising' (elevator going up),
+    // 'roof' (free flight above the roof, for testing the floor transition).
+    this.mode = 'walk';
+    this.riseTargetY = EYE_HEIGHT;
+
     this.bobTime = 0;
     this.baseEye = EYE_HEIGHT;
 
@@ -47,8 +52,21 @@ export class Player {
     this.object.position.set(s.x, this.baseEye, s.z);
     this.velocity.set(0, 0, 0);
     this.bobTime = 0;
+    this.mode = 'walk';
     // Face down an open hallway from the spawn.
     this.camera.rotation.set(0, this.level.spawnYaw || 0, 0);
+  }
+
+  /**
+   * Start the elevator ride: the player rises straight up. For now this just
+   * lifts them above the roof (placeholder for an actual floor transition).
+   * @param {number} targetY eye height to rise to.
+   */
+  rideElevator(targetY) {
+    if (this.mode !== 'walk') return;
+    this.mode = 'rising';
+    this.riseTargetY = targetY;
+    this.velocity.set(0, 0, 0);
   }
 
   lock()   { this.controls.lock(); }
@@ -82,6 +100,20 @@ export class Player {
   update(dt) {
     if (!this.enabled) return;
 
+    const pos = this.object.position;
+
+    // --- elevator ride: rise straight up, ignore input/collision/bob ---
+    if (this.mode === 'rising') {
+      this.velocity.set(0, 0, 0);
+      const RISE_SPEED = 2.2;
+      pos.y += RISE_SPEED * dt;
+      if (pos.y >= this.riseTargetY) {
+        pos.y = this.riseTargetY;
+        this.mode = 'roof';
+      }
+      return;
+    }
+
     // --- desired movement in local space ---
     const dir = new THREE.Vector3();
     const front = (this.keys.forward ? 1 : 0) - (this.keys.back ? 1 : 0);
@@ -107,19 +139,27 @@ export class Player {
     this.velocity.x += (wishVel.x - this.velocity.x) * Math.min(1, ACCEL * dt);
     this.velocity.z += (wishVel.z - this.velocity.z) * Math.min(1, ACCEL * dt);
 
+    // Above the roof we fly freely (no walls); on the ground we collide.
+    const noClip = this.mode === 'roof';
+
     // --- collision-resolved movement (axis separated) ---
-    const pos = this.object.position;
     const nextX = pos.x + this.velocity.x * dt;
-    if (!this._collides(nextX, pos.z)) {
+    if (noClip || !this._collides(nextX, pos.z)) {
       pos.x = nextX;
     } else {
       this.velocity.x = 0;
     }
     const nextZ = pos.z + this.velocity.z * dt;
-    if (!this._collides(pos.x, nextZ)) {
+    if (noClip || !this._collides(pos.x, nextZ)) {
       pos.z = nextZ;
     } else {
       this.velocity.z = 0;
+    }
+
+    if (noClip) {
+      // Hold altitude above the roof, no head-bob.
+      pos.y = this.riseTargetY;
+      return;
     }
 
     // --- head bob ---

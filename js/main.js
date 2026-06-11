@@ -99,18 +99,20 @@ function attachLockEvents() {
 let nearExit = false;
 
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'KeyE' && nearExit && player && player.enabled && !completed) {
-    completeLevel();
+  if (e.code === 'KeyE' && nearExit && player && player.enabled &&
+      !completed && player.mode === 'walk') {
+    useElevator();
   }
 });
 
-function completeLevel() {
-  completed = true;
+function useElevator() {
+  completed = true;            // lock out further exit prompts/triggers
+  ui.hideExitPrompt();
   if (events) events.stop();
   if (level) level.setLightLevel(1.0);
-  player.enabled = false;
-  player.unlock();
-  ui.showComplete();
+  // Rise above the roof for now (placeholder for going up a floor).
+  const roofEye = (level.ceilingHeight || 3.2) + 1.7;
+  player.rideElevator(roofEye);
 }
 
 // ---------------------------------------------------------------------------
@@ -135,11 +137,18 @@ function animate() {
     events.update(dt);
 
     // exit proximity check
-    const d = level.distanceToExit(player.object.position);
-    const wasNear = nearExit;
-    nearExit = d <= level.exit.radius;
-    if (nearExit && !wasNear) ui.showExitPrompt();
-    if (!nearExit && wasNear) ui.hideExitPrompt();
+    if (!completed) {
+      const d = level.distanceToExit(player.object.position);
+      const wasNear = nearExit;
+      nearExit = d <= level.exit.radius;
+      if (nearExit && !wasNear) ui.showExitPrompt();
+      if (!nearExit && wasNear) ui.hideExitPrompt();
+    }
+
+    // Open the elevator doors during/after the ride.
+    if (level && (player.mode === 'rising' || player.mode === 'roof')) {
+      level.setElevatorDoors(true, dt);
+    }
   }
 
   if (level) level.update(dt, camera.position, elapsed);
