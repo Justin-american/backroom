@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="The Backrooms - Level 0. A liminal 3D first-person exploration experience." />
+  <title>The Backrooms &mdash; Level 0</title>
+  <link rel="stylesheet" href="css/style.css" />
+
+  <!-- Three.js is vendored locally (js/vendor/three) via an import map.
+       No build tools, no npm install and no runtime CDN dependency. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./js/vendor/three/three.module.js",
+      "three/addons/": "./js/vendor/three/addons/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <!-- Render target -->
+  <canvas id="game-canvas"></canvas>
+
+  <!-- UI overlays (managed by js/ui.js) -->
+  <div id="ui-root">
+    <!-- Crosshair -->
+    <div id="crosshair" class="hidden">+</div>
+
+    <!-- HUD -->
+    <div id="hud" class="hidden">
+      <div id="hud-hint">Move: <b>WASD</b> &nbsp;&middot;&nbsp; Look: <b>Mouse</b> &nbsp;&middot;&nbsp; Sprint: <b>Shift</b> &nbsp;&middot;&nbsp; Interact: <b>E</b></div>
+    </div>
+
+    <!-- Exit prompt -->
+    <div id="exit-prompt" class="hidden">Press <b>E</b> to step through the exit</div>
+
+    <!-- Start / pause overlay -->
+    <div id="overlay" class="overlay">
+      <div class="overlay-card">
+        <h1>THE&nbsp;BACKROOMS</h1>
+        <h2>Level&nbsp;0 &mdash; &ldquo;The Lobby&rdquo;</h2>
+        <p class="flavor">
+          You noclipped out of reality. There is only the hum of fluorescent lights,
+          the smell of damp carpet, and endless yellow rooms.
+          <br />Find the exit.
+        </p>
+        <ul class="controls">
+          <li><span>W A S D</span> Move</li>
+          <li><span>Mouse</span> Look around</li>
+          <li><span>Shift</span> Sprint</li>
+          <li><span>E</span> Interact / use exit</li>
+          <li><span>Esc</span> Release mouse</li>
+        </ul>
+        <button id="start-button">Click to Enter</button>
+        <p class="loading-note" id="loading-note">Loading&hellip;</p>
+      </div>
+    </div>
+
+    <!-- Level complete screen -->
+    <div id="complete-screen" class="overlay hidden">
+      <div class="overlay-card">
+        <h1 class="complete-title">LEVEL&nbsp;COMPLETE</h1>
+        <p class="flavor">You found a way out of Level 0&hellip; for now.</p>
+        <button id="restart-button">Re-enter Level 0</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
