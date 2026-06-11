@@ -117,11 +117,9 @@ let nearExit = false;
 // 'arrived' : reached the top, doors reopen, level complete
 let elevatorState = 'idle';
 let callTimer = 0;
-let arriveTimer = 0;
 let riseStartY = 0;
 
 const CALL_DELAY = 3.0;   // seconds before the car arrives
-const ARRIVE_HOLD = 1.2;  // seconds doors stay open before "complete"
 
 window.addEventListener('keydown', (e) => {
   if (e.code !== 'KeyE' || !player || !player.enabled || completed ||
@@ -156,7 +154,6 @@ function rideUp() {
 function resetElevator() {
   elevatorState = 'idle';
   callTimer = 0;
-  arriveTimer = 0;
   riseStartY = 0;
   nearExit = false;
 }
@@ -197,20 +194,15 @@ function updateElevator(dt) {
       level.setElevatorHeight(player.object.position.y - riseStartY);
       if (player.mode === 'roof') {       // reached the target height
         audio.elevatorChime();
-        arriveTimer = 0;
         elevatorState = 'arrived';
       }
       break;
     }
     case 'arrived': {
+      // Doors reopen at the top; the player is now free to step out and walk
+      // around on the blank second floor. No "level complete" screen.
       level.setElevatorDoors(true, dt);
-      arriveTimer += dt;
-      if (!completed && arriveTimer >= ARRIVE_HOLD) {
-        completed = true;
-        ui.hideExitPrompt();
-        ui.showComplete();
-        player.unlock();
-      }
+      ui.hideExitPrompt();
       break;
     }
   }

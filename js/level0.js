@@ -49,8 +49,10 @@ export class Level0 {
     this.ceilingHeight = WALL_H;
 
     this._generateGrid();
+    this._planExit();        // choose spawn + carve the elevator doorway in an outer wall
     this._buildTextures();
     this._buildGeometry();
+    this._buildSecondFloor(); // blank floor the elevator rises to
     this._buildLighting();
     this._placeSpawnAndExit();
   }
@@ -387,6 +389,24 @@ export class Level0 {
   }
 
   // --------------------------------------------------------------------------
+  // Second floor: a plain, blank floor sitting on top of the ceiling that the
+  // elevator rises to. The player is free to walk around on it once the
+  // elevator arrives at the top.
+  // --------------------------------------------------------------------------
+  _buildSecondFloor() {
+    const worldW = this.mapW * TILE;
+    const worldH = this.mapH * TILE;
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xc8c4b2, roughness: 1.0, metalness: 0.0,
+    });
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(worldW, worldH), mat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(worldW / 2, WALL_H + 0.02, worldH / 2);
+    this.scene.add(floor);
+    this.objects.push(floor);
+  }
+
+  // --------------------------------------------------------------------------
   // Lighting & atmosphere
   // --------------------------------------------------------------------------
   _buildLighting() {
@@ -418,9 +438,14 @@ export class Level0 {
   }
 
   // --------------------------------------------------------------------------
-  // Spawn + exit placement (exit is the farthest reachable tile from spawn)
+  // Plan the spawn and the elevator location. The elevator is set into an
+  // exterior wall: we look for the farthest reachable open tile that sits
+  // against the outer boundary, then carve a doorway through that boundary
+  // wall so the elevator (built just outside it) opens back into the maze.
+  // This runs before the geometry is built so the carved doorway is reflected
+  // in the wall mesh.
   // --------------------------------------------------------------------------
-  _placeSpawnAndExit() {
+  _planExit() {
     // spawn at first open cell near (1,1)
     const start = [1, 1];
     this.spawn.set(start[0] * TILE + TILE / 2, 1.7, start[1] * TILE + TILE / 2);
@@ -434,11 +459,10 @@ export class Level0 {
     else if (this.grid[sy][sx - 1] === 0) this.spawnYaw = Math.PI / 2;
     else this.spawnYaw = 0;
 
-    // BFS to find the farthest open tile
+    // BFS distances over open tiles, from the spawn.
     const dist = Array.from({ length: this.mapH }, () => new Array(this.mapW).fill(-1));
     const q = [start];
     dist[start[1]][start[0]] = 0;
-    let far = start, farD = 0;
     const dirs = [[0, -1], [1, 0], [0, 1], [-1, 0]];
     while (q.length) {
       const [x, y] = q.shift();
@@ -447,26 +471,62 @@ export class Level0 {
         if (nx < 0 || ny < 0 || nx >= this.mapW || ny >= this.mapH) continue;
         if (this.grid[ny][nx] !== 0 || dist[ny][nx] !== -1) continue;
         dist[ny][nx] = dist[y][x] + 1;
-        if (dist[ny][nx] > farD) { farD = dist[ny][nx]; far = [nx, ny]; }
         q.push([nx, ny]);
       }
     }
 
-    const ex = far[0] * TILE + TILE / 2;
-    const ez = far[1] * TILE + TILE / 2;
+    // Farthest reachable open tile that borders the outer wall.
+    let access = null, accessD = -1, border = null;
+    for (let y = 1; y < this.mapH - 1; y++) {
+      for (let x = 1; x < this.mapW - 1; x++) {
+        if (this.grid[y][x] !== 0 || dist[y][x] < 0) continue;
+        let b = null;
+        if (y === 1) b = [x, 0];
+        else if (y === this.mapH - 2) b = [x, this.mapH - 1];
+        else if (x === 1) b = [0, y];
+        else if (x === this.mapW - 2) b = [this.mapW - 1, y];
+        if (!b) continue;                       // not against the boundary
+        if (dist[y][x] > accessD) { accessD = dist[y][x]; access = [x, y]; border = b; }
+      }
+    }
+
+    // Fallback (shouldn't normally happen): use the farthest open tile.
+    if (!access) {
+      let far = start, farD = 0;
+      for (let y = 0; y < this.mapH; y++) {
+        for (let x = 0; x < this.mapW; x++) {
+          if (dist[y][x] > farD) { farD = dist[y][x]; far = [x, y]; }
+        }
+      }
+      access = far; border = far;
+    }
+
+    // Carve the doorway through the outer wall: this is the entrance to the
+    // elevator, so the wall tile it sits in is removed.
+    this.grid[border[1]][border[0]] = 0;
+
+    // Doors face from the boundary back toward the interior access tile, so
+    // the player walks out of the maze and straight into the car.
+    const facing = new THREE.Vector3(
+      access[0] - border[0], 0, access[1] - border[1]
+    );
+    if (facing.lengthSq() === 0) facing.set(0, 0, -1);
+    else facing.normalize();
+
+    this._exitPlan = { start, access, border, facing };
+  }
+
+  // --------------------------------------------------------------------------
+  // Build the elevator + arrows from the plan computed in _planExit().
+  // --------------------------------------------------------------------------
+  _placeSpawnAndExit() {
+    const { start, access, border, facing } = this._exitPlan;
+    const ex = border[0] * TILE + TILE / 2;
+    const ez = border[1] * TILE + TILE / 2;
     this.exit.position.set(ex, 0, ez);
 
-    // Pick an open neighbour tile so the elevator's doors face open space the
-    // player can actually walk in from (rather than facing into a wall).
-    let facing = new THREE.Vector3(0, 0, -1);
-    for (const [dx, dy] of dirs) {
-      const nx = far[0] + dx, ny = far[1] + dy;
-      if (nx < 0 || ny < 0 || nx >= this.mapW || ny >= this.mapH) continue;
-      if (this.grid[ny][nx] === 0) { facing.set(dx, 0, dy); break; }
-    }
     this._buildElevator(ex, ez, facing);
-
-    this._placeArrows(start, far);
+    this._placeArrows(start, access);
   }
 
   // --------------------------------------------------------------------------
