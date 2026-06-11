@@ -296,9 +296,11 @@ export class Level1 {
     carve(8, 5, 28, 7);             // executive hallway (east-west, wide)
     this.execArea = { x0: 6, z0: 0, x1: 30, z1: 10 };
 
-    // executive side offices (open alcoves off the hallway)
-    carve(8, 2, 12, 4);
-    carve(24, 2, 28, 4);
+    // executive side offices (enclosed rooms entered through a single doorway)
+    this.vpRoom  = { x0: 8,  z0: 2, x1: 12, z1: 3, door: [10, 4] };
+    this.cfoRoom = { x0: 24, z0: 2, x1: 28, z1: 3, door: [26, 4] };
+    carve(8, 2, 12, 3);
+    carve(24, 2, 28, 3);
     // CEO office: an enclosed room at the head of the executive hallway,
     // reached through a single doorway.
     this.ceoRoom = { x0: 15, z0: 1, x1: 21, z1: 3, door: [18, 4] };
@@ -308,6 +310,8 @@ export class Level1 {
     const door = (x, z) => { this.grid[z][x] = 0; this.openings.add(`${x},${z}`); };
     for (const r of this.rooms) if (r.door) door(r.door[0], r.door[1]);
     door(this.ceoRoom.door[0], this.ceoRoom.door[1]);
+    door(this.vpRoom.door[0], this.vpRoom.door[1]);
+    door(this.cfoRoom.door[0], this.cfoRoom.door[1]);
 
     // Executive Wing locked door tiles (block until unlocked): spine @ z10.
     this.execDoorTiles = [[16, 10], [17, 10], [18, 10]];
@@ -472,11 +476,12 @@ export class Level1 {
     execLight2.position.set(18 * TILE + TILE / 2, WALL_H - 0.4, 9 * TILE + TILE / 2);
     this.scene.add(execLight2); this.objects.push(execLight2);
 
-    // warm ceiling strip over the exec hallway
+    // warm recessed ceiling light over the exec hallway (a tidy fixture, not a
+    // giant glowing slab)
     const strip = new THREE.Mesh(
-      new THREE.PlaneGeometry(TILE * 4, TILE * 2.0),
+      new THREE.PlaneGeometry(TILE * 1.4, TILE * 0.35),
       new THREE.MeshStandardMaterial({
-        color: 0xfff0d0, emissive: 0xffe0b0, emissiveIntensity: 1.0,
+        color: 0xfff0d0, emissive: 0xffe0b0, emissiveIntensity: 0.9,
         side: THREE.DoubleSide }));
     strip.rotation.x = Math.PI / 2;
     strip.position.set(18 * TILE + TILE / 2, WALL_H - 0.04, 6 * TILE + TILE / 2);
@@ -498,6 +503,54 @@ export class Level1 {
 
     // The locked Executive Wing door (double leaf across the 3-tile threshold).
     this._buildExecDoor();
+
+    // Regular single-leaf swing doors into the VP and CFO offices.
+    this.officeDoors = [];
+    this._buildOfficeDoor(this.vpRoom.door[0], this.vpRoom.door[1], true);
+    this._buildOfficeDoor(this.cfoRoom.door[0], this.cfoRoom.door[1], false);
+  }
+
+  // A regular office door: a single wooden leaf with a handle, hinged on one
+  // side, that swings open into the office as the player approaches. `hingeLeft`
+  // chooses which jamb the leaf is hinged on so it always opens into the room
+  // (north, away from the hallway).
+  _buildOfficeDoor(tx, tz, hingeLeft) {
+    const cx = tx * TILE + TILE / 2;
+    const z = tz * TILE + TILE / 2;
+    const W = TILE - 0.3;          // leaf width (fits the 1-tile opening)
+    const H = 2.6;
+
+    const woodMat = new THREE.MeshStandardMaterial({
+      color: 0x5a3a1e, roughness: 0.6, metalness: 0.08 });
+    const trimMat = new THREE.MeshStandardMaterial({
+      color: 0xc7a24a, roughness: 0.35, metalness: 0.7 });
+
+    // Pivot at the hinge edge so rotating the group swings the leaf open.
+    const pivot = new THREE.Group();
+    const hingeX = cx + (hingeLeft ? -W / 2 : W / 2);
+    pivot.position.set(hingeX, 0, z);
+
+    const leaf = new THREE.Mesh(new THREE.BoxGeometry(W, H, 0.08), woodMat);
+    leaf.position.set(hingeLeft ? W / 2 : -W / 2, H / 2, 0);
+    pivot.add(leaf);
+
+    // handle near the swinging edge, on both faces
+    const handleGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.16, 8);
+    const hx = hingeLeft ? W - 0.18 : -(W - 0.18);
+    for (const dz of [0.07, -0.07]) {
+      const h = new THREE.Mesh(handleGeo, trimMat);
+      h.rotation.x = Math.PI / 2;
+      h.position.set(hx, H / 2, dz);
+      pivot.add(h);
+    }
+
+    this.scene.add(pivot); this.objects.push(pivot);
+    // Open toward -z (into the office). +Y rotation swings a +x leaf to -z, so
+    // a left-hinged leaf uses a positive angle and a right-hinged one negative.
+    this.officeDoors.push({
+      pivot, t: 0, cx, z,
+      openAngle: (hingeLeft ? 1 : -1) * Math.PI * 0.5,
+    });
   }
 
   _buildExecDoor() {
@@ -1308,6 +1361,16 @@ export class Level1 {
       d.t += (tgt - d.t) * Math.min(1, dt * 2.0);
       d.left.position.x = d.leftClosedX - d.leafW * d.t;
       d.right.position.x = d.rightClosedX + d.leafW * d.t;
+    }
+
+    // swing the office doors open as the player approaches
+    if (this.officeDoors) {
+      const p = player.object.position;
+      for (const d of this.officeDoors) {
+        const near = Math.hypot(p.x - d.cx, p.z - d.z) < TILE * 1.4;
+        d.t += ((near ? 1 : 0) - d.t) * Math.min(1, dt * 4.0);
+        d.pivot.rotation.y = d.openAngle * d.t;
+      }
     }
 
     // bob the keycards so they catch the eye

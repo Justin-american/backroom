@@ -245,7 +245,17 @@ async function transitionToLevel1() {
   levelIndex = 1;
   buildLevel();
 
-  // Resume control (pointer lock persists across the transition).
+  // Resume control. The browser still holds pointer lock from Level 0, but the
+  // freshly-built PointerLockControls start with isLocked=false and never
+  // receive a pointerlockchange event (the lock was never released), so mouse
+  // look would be dead until the player pressed Esc and clicked back in. Sync
+  // the new controls to the live pointer-lock state so look works immediately.
+  if (document.pointerLockElement === renderer.domElement) {
+    player.controls.isLocked = true;
+  } else {
+    // Pointer lock was lost during the transition; re-acquire it.
+    player.lock();
+  }
   player.enabled = true;
   await ui.fadeIn();
   transitioning = false;
