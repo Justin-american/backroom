@@ -122,6 +122,8 @@ export class Level0 {
     this.wallTex   = this._makeWallTexture();
     this.carpetTex = this._makeCarpetTexture();
     this.ceilTex   = this._makeCeilingTexture();
+    this.stainTex  = this._makeStainTexture();
+    this.arrowTex  = this._makeArrowTexture();
   }
 
   _makeWallTexture() {
@@ -160,16 +162,9 @@ export class Level0 {
       g.fillStyle = v > 0.5 ? 'rgba(120,110,45,0.25)' : 'rgba(70,64,25,0.25)';
       g.fillRect(x, y, 2, 1);
     }
-    // dark stains
-    for (let i = 0; i < 18; i++) {
-      const x = Math.random() * 256, y = Math.random() * 256;
-      const r = 8 + Math.random() * 34;
-      const grad = g.createRadialGradient(x, y, 0, x, y, r);
-      grad.addColorStop(0, 'rgba(40,34,12,0.45)');
-      grad.addColorStop(1, 'rgba(40,34,12,0)');
-      g.fillStyle = grad;
-      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
-    }
+    // NOTE: dark stains are no longer baked into this (per-tile) repeating
+    // texture, which previously put a stain on every single floor panel.
+    // Stains are now placed sparsely as separate decals (see _placeStains).
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -198,9 +193,74 @@ export class Level0 {
     return tex;
   }
 
-  // --------------------------------------------------------------------------
-  // Geometry
-  // --------------------------------------------------------------------------
+  // A single soft, irregular dark carpet stain on a transparent canvas.
+  // Used as a sparse decal so stains appear "once in a while", not on
+  // every floor panel.
+  _makeStainTexture() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const g = c.getContext('2d');
+    g.clearRect(0, 0, 128, 128);
+    // a few overlapping soft blobs for an organic edge
+    const blobs = 4 + Math.floor(this.rand() * 4);
+    for (let i = 0; i < blobs; i++) {
+      const x = 64 + (this.rand() - 0.5) * 46;
+      const y = 64 + (this.rand() - 0.5) * 46;
+      const r = 22 + this.rand() * 30;
+      const grad = g.createRadialGradient(x, y, 0, x, y, r);
+      grad.addColorStop(0, 'rgba(28,24,8,0.55)');
+      grad.addColorStop(0.6, 'rgba(32,27,10,0.32)');
+      grad.addColorStop(1, 'rgba(32,27,10,0)');
+      g.fillStyle = grad;
+      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  // A hand-drawn-looking blue marker arrow, pointing toward the TOP of the
+  // canvas. Drawn with a few jittered, overlapping strokes so it reads as
+  // scrawled-on graffiti rather than a clean vector arrow.
+  _makeArrowTexture() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 256;
+    const g = c.getContext('2d');
+    g.clearRect(0, 0, 256, 256);
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+
+    // Draw a slightly wiggly line as several short segments.
+    const scrawl = (x1, y1, x2, y2, width, alpha) => {
+      g.strokeStyle = `rgba(26,40,110,${alpha})`;
+      g.lineWidth = width;
+      const segs = 6;
+      g.beginPath();
+      g.moveTo(x1, y1);
+      for (let s = 1; s <= segs; s++) {
+        const t = s / segs;
+        const jx = (this.rand() - 0.5) * 7;
+        const jy = (this.rand() - 0.5) * 7;
+        g.lineTo(x1 + (x2 - x1) * t + jx, y1 + (y2 - y1) * t + jy);
+      }
+      g.stroke();
+    };
+
+    const tipX = 128, tipY = 40;
+    // main shaft (drawn twice for a marker-ish double stroke)
+    scrawl(128, 224, tipX, tipY, 9, 0.9);
+    scrawl(130, 222, tipX + 2, tipY + 4, 5, 0.55);
+    // arrow head
+    scrawl(tipX, tipY, 80, 104, 9, 0.9);
+    scrawl(tipX, tipY, 176, 104, 9, 0.9);
+    // small feathered tail strokes (like the reference sketch)
+    scrawl(128, 210, 104, 178, 5, 0.7);
+    scrawl(128, 210, 152, 178, 5, 0.7);
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
   _buildGeometry() {
     const worldW = this.mapW * TILE;
     const worldH = this.mapH * TILE;
@@ -277,6 +337,52 @@ export class Level0 {
     this.lightPanels.instanceMatrix.needsUpdate = true;
     this.scene.add(this.lightPanels);
     this.objects.push(this.lightPanels);
+
+    this._placeStains();
+  }
+
+  // --------------------------------------------------------------------------
+  // Sparse carpet stains: occasional dark decals on random open floor tiles
+  // (instead of a stain baked into every repeating carpet panel).
+  // --------------------------------------------------------------------------
+  _placeStains() {
+    const STAIN_CHANCE = 0.12;   // ~1 in 8 floor tiles gets a stain
+    const tiles = [];
+    for (let y = 1; y < this.mapH - 1; y++) {
+      for (let x = 1; x < this.mapW - 1; x++) {
+        if (this.grid[y][x] === 0 && this.rand() < STAIN_CHANCE) tiles.push([x, y]);
+      }
+    }
+    if (tiles.length === 0) return;
+
+    const stainMat = new THREE.MeshBasicMaterial({
+      map: this.stainTex,
+      transparent: true,
+      depthWrite: false,
+      opacity: 0.85,
+    });
+    const stainGeo = new THREE.PlaneGeometry(1, 1);
+    const stains = new THREE.InstancedMesh(stainGeo, stainMat, tiles.length);
+    const mat = new THREE.Matrix4();
+    const flat = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
+    tiles.forEach(([x, y], i) => {
+      const size = TILE * (0.55 + this.rand() * 0.7);
+      const yaw = this.rand() * Math.PI * 2;
+      const t = new THREE.Matrix4().makeTranslation(
+        x * TILE + TILE / 2 + (this.rand() - 0.5) * TILE * 0.3,
+        0.02,
+        y * TILE + TILE / 2 + (this.rand() - 0.5) * TILE * 0.3
+      );
+      const r = new THREE.Matrix4().multiplyMatrices(
+        new THREE.Matrix4().makeRotationY(yaw), flat
+      );
+      const s = new THREE.Matrix4().makeScale(size, size, 1);
+      mat.multiplyMatrices(t, new THREE.Matrix4().multiplyMatrices(r, s));
+      stains.setMatrixAt(i, mat);
+    });
+    stains.instanceMatrix.needsUpdate = true;
+    this.scene.add(stains);
+    this.objects.push(stains);
   }
 
   // --------------------------------------------------------------------------
@@ -349,6 +455,88 @@ export class Level0 {
     const ez = far[1] * TILE + TILE / 2;
     this.exit.position.set(ex, 0, ez);
     this._buildExitDoor(ex, ez);
+
+    this._placeArrows(start, far);
+  }
+
+  // --------------------------------------------------------------------------
+  // Directional arrows: scrawled on walls along the path to the exit, spaced
+  // out so the player follows them one after another, like a breadcrumb trail.
+  // --------------------------------------------------------------------------
+  _placeArrows(start, exitCell) {
+    // BFS from the exit -> distance-to-exit for every open tile.
+    const distToExit = Array.from(
+      { length: this.mapH }, () => new Array(this.mapW).fill(-1)
+    );
+    const q = [exitCell];
+    distToExit[exitCell[1]][exitCell[0]] = 0;
+    const dirs = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+    while (q.length) {
+      const [x, y] = q.shift();
+      for (const [dx, dy] of dirs) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= this.mapW || ny >= this.mapH) continue;
+        if (this.grid[ny][nx] !== 0 || distToExit[ny][nx] !== -1) continue;
+        distToExit[ny][nx] = distToExit[y][x] + 1;
+        q.push([nx, ny]);
+      }
+    }
+
+    // Walk the shortest path from spawn to exit, always stepping to the
+    // neighbour closer to the exit. Place an arrow every few steps, on a side
+    // wall, pointing in the direction of travel.
+    const ARROW_SPACING = 5;
+    let cx = start[0], cy = start[1];
+    let steps = 0, guard = 0;
+    const limit = this.mapW * this.mapH;
+    while (distToExit[cy][cx] > 0 && guard++ < limit) {
+      let best = null, bestD = distToExit[cy][cx];
+      for (const [dx, dy] of dirs) {
+        const nx = cx + dx, ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= this.mapW || ny >= this.mapH) continue;
+        if (this.grid[ny][nx] !== 0 || distToExit[ny][nx] < 0) continue;
+        if (distToExit[ny][nx] < bestD) { bestD = distToExit[ny][nx]; best = [dx, dy]; }
+      }
+      if (!best) break;
+      if (steps % ARROW_SPACING === 0) this._tryBuildArrow(cx, cy, best);
+      cx += best[0]; cy += best[1]; steps++;
+    }
+  }
+
+  // Place a wall arrow at path tile (tx,ty) pointing along travel dir [dx,dy].
+  // The arrow is drawn on a side wall (perpendicular to travel) so it can
+  // visibly point forward in the wall's plane.
+  _tryBuildArrow(tx, ty, [dx, dy]) {
+    // The two sides perpendicular to the travel direction.
+    const sides = [[dy, -dx], [-dy, dx]];
+    for (const [sx, sy] of sides) {
+      const wx = tx + sx, wy = ty + sy;
+      if (wx < 0 || wy < 0 || wx >= this.mapW || wy >= this.mapH) continue;
+      if (this.grid[wy][wx] !== 1) continue;   // need a wall on this side
+
+      const mat = this.arrowMat || (this.arrowMat = new THREE.MeshBasicMaterial({
+        map: this.arrowTex, transparent: true, depthWrite: false, opacity: 0.9,
+      }));
+      const geo = this.arrowGeo ||
+        (this.arrowGeo = new THREE.PlaneGeometry(1.0, 1.4));
+      const mesh = new THREE.Mesh(geo, mat);
+
+      // Position on the wall face, just in front of it, at eye height.
+      const px = tx * TILE + TILE / 2 + sx * (TILE / 2 - 0.03);
+      const pz = ty * TILE + TILE / 2 + sy * (TILE / 2 - 0.03);
+
+      // Orient: front (+Z) faces the path tile (-side); up (+Y) = travel dir.
+      const n = new THREE.Vector3(-sx, 0, -sy).normalize();
+      const up = new THREE.Vector3(dx, 0, dy).normalize();
+      const right = new THREE.Vector3().crossVectors(up, n).normalize();
+      const basis = new THREE.Matrix4().makeBasis(right, up, n);
+      mesh.quaternion.setFromRotationMatrix(basis);
+      mesh.position.set(px, 1.6, pz);
+
+      this.scene.add(mesh);
+      this.objects.push(mesh);
+      return;   // one arrow per chosen tile
+    }
   }
 
   _buildExitDoor(x, z) {
@@ -443,7 +631,8 @@ export class Level0 {
       }
     }
     this.objects = [];
-    [this.wallTex, this.carpetTex, this.ceilTex].forEach((t) => t && t.dispose());
+    [this.wallTex, this.carpetTex, this.ceilTex, this.stainTex, this.arrowTex]
+      .forEach((t) => t && t.dispose());
     this.scene.fog = null;
   }
 }
