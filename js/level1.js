@@ -41,6 +41,7 @@ export class Level1 {
     this.objects = [];          // everything added, for disposal
     this.interactables = [];    // { mesh, type } raycast targets
     this.solids = new Set();    // extra blocked tiles ("x,z") e.g. elevator body
+    this.boxes = [];            // precise furniture AABBs {x0,x1,z0,z1}
     this.openings = new Set();  // tiles to force-passable (doorways)
 
     this.spawn = new THREE.Vector3(0, 1.7, 0);
@@ -542,7 +543,7 @@ export class Level1 {
     const desk = new THREE.Mesh(new THREE.BoxGeometry(TILE * 3, 1.1, 1.0), mat);
     desk.position.set(12 * TILE, 0.55, 45 * TILE + TILE / 2);
     this.scene.add(desk); this.objects.push(desk);
-    this._blockBox(desk.position.x, desk.position.z, TILE * 3, 1.0);
+    this._blockSolid(desk.position.x, desk.position.z, TILE * 3, 1.0);
 
     // backlit "office directory" board on the reception wall
     this._sign(
@@ -562,7 +563,7 @@ export class Level1 {
     const table = new THREE.Mesh(new THREE.BoxGeometry(TILE * 2.4, 0.9, TILE * 1.1), tableMat);
     table.position.set(cx, 0.45, cz);
     this.scene.add(table); this.objects.push(table);
-    this._blockBox(cx, cz, TILE * 2.4, TILE * 1.1);
+    this._blockSolid(cx, cz, TILE * 2.4, TILE * 1.1);
     // chairs around the table
     for (let i = -2; i <= 2; i++) {
       this._simpleChair(cx + i * 1.3, cz - TILE * 0.9, 0x222428);
@@ -606,7 +607,7 @@ export class Level1 {
     const counter = new THREE.Mesh(new THREE.BoxGeometry(TILE * 2.4, 1.0, 0.8), counterMat);
     counter.position.set(cx, 0.5, r.z0 * TILE + 0.6);
     this.scene.add(counter); this.objects.push(counter);
-    this._blockBox(counter.position.x, counter.position.z, TILE * 2.4, 0.8);
+    this._blockSolid(counter.position.x, counter.position.z, TILE * 2.4, 0.8);
     // vending machine
     const vend = new THREE.Mesh(new THREE.BoxGeometry(1.0, 2.0, 0.8),
       new THREE.MeshStandardMaterial({ color: 0x882222, roughness: 0.5,
@@ -636,7 +637,7 @@ export class Level1 {
     const desk = new THREE.Mesh(new THREE.BoxGeometry(TILE * 1.4, 0.95, 0.9), deskMat);
     desk.position.set(cx, 0.47, cz);
     this.scene.add(desk); this.objects.push(desk);
-    this._blockBox(cx, cz, TILE * 1.4, 0.9);
+    this._blockSolid(cx, cz, TILE * 1.4, 0.9);
     this._simpleChair(cx, cz + 1.1, 0x222428);
     // monitor + filing cabinet
     const mon = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.05),
@@ -654,7 +655,7 @@ export class Level1 {
       const x = gx * TILE + TILE / 2, z = (r.z0 + r.z1) / 2 * TILE + TILE / 2;
       shelf.position.set(x, 1.1, z);
       this.scene.add(shelf); this.objects.push(shelf);
-      this._blockBox(x, z, 0.7, TILE * 1.2);
+      this._blockSolid(x, z, 0.7, TILE * 1.2);
     }
   }
 
@@ -692,7 +693,7 @@ export class Level1 {
     const desk = new THREE.Mesh(new THREE.BoxGeometry(TILE * 2.0, 1.0, 1.2), woodMat);
     desk.position.set(cx, 0.5, cz - 0.4);
     this.scene.add(desk); this.objects.push(desk);
-    this._blockBox(cx, cz - 0.4, TILE * 2.0, 1.2);
+    this._blockSolid(cx, cz - 0.4, TILE * 2.0, 1.2);
 
     // executive leather chair behind the desk
     this._leatherChair(cx, cz - 1.6, Math.PI);
@@ -964,11 +965,29 @@ export class Level1 {
         this.solids.add(`${x},${z}`);
   }
 
+  /**
+   * Block the *precise* footprint of a piece of furniture (world space) rather
+   * than rounding it up to whole tiles. Tile-based blocking turns a thin
+   * counter or desk into a full 4-unit invisible wall, which can keep the
+   * player too far back to look down at items sitting on top (e.g. keycards).
+   */
+  _blockSolid(cx, cz, w, d) {
+    this.boxes.push({
+      x0: cx - w / 2, x1: cx + w / 2,
+      z0: cz - d / 2, z1: cz + d / 2,
+    });
+  }
+
   /** True if the given world position is blocked. */
   isBlocked(worldX, worldZ) {
     const gx = Math.floor(worldX / TILE);
     const gz = Math.floor(worldZ / TILE);
     if (gx < 0 || gz < 0 || gx >= this.mapW || gz >= this.mapH) return true;
+    // precise furniture footprints (independent of the tile grid)
+    for (const b of this.boxes) {
+      if (worldX >= b.x0 && worldX <= b.x1 && worldZ >= b.z0 && worldZ <= b.z1)
+        return true;
+    }
     const key = `${gx},${gz}`;
     if (this.openings.has(key)) {
       // doorway: blocked only if a *locked* exec-door tile
