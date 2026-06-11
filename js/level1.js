@@ -225,37 +225,70 @@ export class Level1 {
     // --- reception (south) ---
     carve(6, 43, 30, 47);
 
+    // elevator shaft: a single recess in the south reception wall so the exit
+    // elevator can sit in the wall with its doors opening *into* reception.
+    this.grid[48][17] = 0;
+
     // --- a short cross hallway through the middle of the office ---
     carve(3, 24, 33, 26);
 
     this.rooms = [];
     const room = (def) => { this.rooms.push(def); carve(def.x0, def.z0, def.x1, def.z1); };
 
-    // West rooms (interior x 3..14, doorway carved at x15)
-    room({ name: 'CONFERENCE A', type: 'conference', dept: 'Conference Room A',
-           x0: 3, z0: 11, x1: 14, z1: 17, door: [15, 14], side: 'W' });
-    room({ name: 'CUBICLES', type: 'cubicles', dept: 'Cubicle Cluster 1',
-           x0: 3, z0: 28, x1: 14, z1: 35, door: [15, 31], side: 'W' });
-    room({ name: 'BREAK ROOM', type: 'break', dept: 'Break Room',
-           x0: 3, z0: 37, x1: 14, z1: 42, door: [15, 39], side: 'W' });
+    // --- Room *slots*: fixed positions / doorways, but their purpose (room
+    // type) is assigned randomly each playthrough so every visit is different.
+    // `row` ties spine-facing west/east slots together for hallway signage.
+    const slots = [
+      // West rooms (interior x 3..14, doorway carved at x15)
+      { x0: 3,  z0: 11, x1: 14, z1: 17, door: [15, 14], side: 'W', size: 'large', row: 'A' },
+      { x0: 3,  z0: 28, x1: 14, z1: 35, door: [15, 31], side: 'W', size: 'large', row: 'B' },
+      { x0: 3,  z0: 37, x1: 14, z1: 42, door: [15, 39], side: 'W', size: 'large', row: 'C' },
+      // East rooms (interior x 20..33, doorway carved at x19)
+      { x0: 20, z0: 11, x1: 33, z1: 17, door: [19, 14], side: 'E', size: 'large', row: 'A' },
+      { x0: 20, z0: 28, x1: 33, z1: 35, door: [19, 31], side: 'E', size: 'large', row: 'B' },
+      { x0: 20, z0: 37, x1: 26, z1: 42, door: [19, 39], side: 'E', size: 'medium', row: 'C' },
+      { x0: 28, z0: 37, x1: 33, z1: 42, door: [27, 39], side: 'W', size: 'medium' },
+      // Rooms off the cross hallway (smaller)
+      { x0: 3,  z0: 19, x1: 9,  z1: 23, door: [6, 23],  side: 'S', size: 'small' },
+      { x0: 11, z0: 19, x1: 14, z1: 23, door: [12, 23], side: 'S', size: 'tiny' },
+      { x0: 27, z0: 19, x1: 33, z1: 23, door: [30, 23], side: 'S', size: 'small' },
+    ];
 
-    // East rooms (interior x 20..33, doorway carved at x19)
-    room({ name: 'CONFERENCE B', type: 'conference', dept: 'Conference Room B',
-           x0: 20, z0: 11, x1: 33, z1: 17, door: [19, 14], side: 'E' });
-    room({ name: 'CUBICLES', type: 'cubicles', dept: 'Cubicle Cluster 2',
-           x0: 20, z0: 28, x1: 33, z1: 35, door: [19, 31], side: 'E' });
-    room({ name: 'MANAGER', type: 'manager', dept: "Manager's Office",
-           x0: 20, z0: 37, x1: 26, z1: 42, door: [19, 39], side: 'E' });
-    room({ name: 'STORAGE', type: 'storage', dept: 'Storage',
-           x0: 28, z0: 37, x1: 33, z1: 42, door: [27, 39], side: 'W' });
+    // Which room types may occupy a slot of a given size (so furniture always
+    // fits and the level still reads as an office).
+    const allowed = {
+      large:  ['conference', 'cubicles', 'manager', 'storage'],
+      medium: ['cubicles', 'manager', 'storage'],
+      small:  ['manager', 'storage', 'utility'],
+      tiny:   ['utility', 'storage'],
+    };
+    const baseLabel = {
+      conference: 'Conference Room', cubicles: 'Cubicle Cluster',
+      break: 'Break Room', manager: "Manager's Office",
+      storage: 'Storage', utility: 'Utility',
+    };
+    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-    // Rooms off the cross hallway
-    room({ name: 'MANAGER', type: 'manager', dept: "Manager's Office",
-           x0: 3, z0: 19, x1: 9, z1: 23, door: [6, 23], side: 'S' });
-    room({ name: 'UTILITY', type: 'utility', dept: 'Utility',
-           x0: 11, z0: 19, x1: 14, z1: 23, door: [12, 23], side: 'S' });
-    room({ name: 'STORAGE', type: 'storage', dept: 'Storage',
-           x0: 27, z0: 19, x1: 33, z1: 23, door: [30, 23], side: 'S' });
+    // The break room holds the Manager's Keycard, so guarantee exactly one and
+    // put it in a roomy (large) slot that is reachable straight from the spine.
+    const largeIdx = slots.reduce((a, s, i) => (s.size === 'large' ? a.concat(i) : a), []);
+    const breakIdx = pick(largeIdx);
+
+    // Number repeated departments (Conference Room A/B, Cubicle Cluster 1/2 ...).
+    const counts = {};
+    const labelFor = (type) => {
+      const base = baseLabel[type];
+      if (type === 'break') return base;
+      counts[type] = (counts[type] || 0) + 1;
+      if (type === 'conference') return `${base} ${String.fromCharCode(64 + counts[type])}`;
+      return `${base} ${counts[type]}`;
+    };
+
+    slots.forEach((s, i) => {
+      s.type = i === breakIdx ? 'break' : pick(allowed[s.size]);
+      s.dept = labelFor(s.type);
+      room(s);
+    });
 
     // --- Executive Wing (north of the spine, behind a locked door) ---
     // Vestibule -> executive hallway -> side offices -> enclosed CEO office.
@@ -531,10 +564,32 @@ export class Level1 {
     // CEO office (most detailed room) + the Elevator Keycard.
     this._ceoOffice();
 
-    // hallway department signage hanging in the spine
-    this._hallwaySign(['\u2190 CONFERENCE', 'CUBICLES \u2192'], 17 * TILE + TILE / 2, 13 * TILE);
-    this._hallwaySign(['\u2190 BREAK ROOM', 'OFFICES \u2192'], 17 * TILE + TILE / 2, 30 * TILE);
-    this._hallwaySign(['EXECUTIVE WING \u2191'], 17 * TILE + TILE / 2, 24 * TILE + TILE / 2);
+    // Hallway department signage hung in the spine. Generated from the actual
+    // (randomised) room assignments so a sign always points at the right room.
+    const spineX = 17 * TILE + TILE / 2;
+    const rows = {};
+    for (const r of this.rooms) {
+      if (!r.row) continue;
+      (rows[r.row] = rows[r.row] || {})[r.side] = r;
+    }
+    for (const id of Object.keys(rows)) {
+      const { W: w, E: e } = rows[id];
+      const lines = [];
+      if (w) lines.push('\u2190 ' + this._shortLabel(w.type));
+      if (e) lines.push(this._shortLabel(e.type) + ' \u2192');
+      const ref = w || e;
+      const z = (ref.z0 + ref.z1) / 2 * TILE + TILE / 2;
+      this._hallwaySign(lines, spineX, z);
+    }
+    this._hallwaySign(['EXECUTIVE WING \u2191'], spineX, 24 * TILE + TILE / 2);
+  }
+
+  /** Short, fixed-width department label used on hallway signs / directory. */
+  _shortLabel(type) {
+    return {
+      conference: 'CONFERENCE', cubicles: 'CUBICLES', break: 'BREAK ROOM',
+      manager: "MANAGER'S", storage: 'STORAGE', utility: 'UTILITY',
+    }[type] || 'OFFICE';
   }
 
   _receptionArea() {
@@ -545,17 +600,28 @@ export class Level1 {
     this.scene.add(desk); this.objects.push(desk);
     this._blockSolid(desk.position.x, desk.position.z, TILE * 3, 1.0);
 
-    // backlit "office directory" board on the reception wall
+    // backlit "office directory" board on the reception wall, listing the
+    // departments that were actually generated for this layout.
+    const order = ['conference', 'cubicles', 'break', 'manager', 'storage', 'utility'];
+    const present = order.filter((t) => this.rooms.some((r) => r.type === t));
+    const dots = (label) => (label + ' ').padEnd(16, '.');
+    const dirLines = ['OFFICE DIRECTORY', ''];
+    present.forEach((t, i) => dirLines.push(`${dots(this._shortLabel(t))} ${i + 1}`));
+    dirLines.push('EXECUTIVE WING . . \u2191');
     this._sign(
-      ['OFFICE DIRECTORY', '', 'CONFERENCE . . . . . . 1', 'CUBICLES . . . . . . . . 2',
-       'BREAK ROOM . . . . . . 3', 'MANAGERS . . . . . . . 4', 'EXECUTIVE WING . . \u2191'],
+      dirLines,
       6 * TILE + 0.1, 1.7, 45 * TILE + TILE / 2, Math.PI / 2,
       { w: 420, h: 520, bg: '#10161f', fg: '#bfe0ff', accent: '#2f6f9f',
         border: '#3a536b', size: 30 }, 2.6, 3.2);
 
-    // a couple of waiting-area chairs
+    // a small waiting area: a few chairs, a potted plant and a wall clock
     this._simpleChair(22 * TILE, 45 * TILE, 0x33373f);
     this._simpleChair(24 * TILE, 45 * TILE, 0x33373f);
+    this._simpleChair(22 * TILE, 46 * TILE, 0x33373f);
+    this._simpleChair(24 * TILE, 46 * TILE, 0x33373f);
+    this._plant(26 * TILE, 45.5 * TILE);
+    this._plant(10 * TILE, 45.5 * TILE);
+    this._wallClock(12 * TILE, 2.3, 43 * TILE + 0.12, 0);
   }
 
   _conferenceRoom(r, cx, cz) {
@@ -575,6 +641,9 @@ export class Level1 {
         emissiveIntensity: 0.2, side: THREE.DoubleSide }));
     screen.position.set(cx, 1.9, r.z0 * TILE + 0.1);
     this.scene.add(screen); this.objects.push(screen);
+    // a clock on the wall and a plant in the corner soften the room
+    this._wallClock(cx + TILE * 1.6, 2.3, r.z0 * TILE + 0.12, 0);
+    this._plant(r.x1 * TILE - 0.9, r.z1 * TILE - 0.9);
   }
 
   _cubicleCluster(r) {
@@ -597,8 +666,12 @@ export class Level1 {
         this.scene.add(p1, p2, desk, mon);
         this.objects.push(p1, p2, desk, mon);
         this._monitors.push(mon);
+        // an office chair tucked at each desk
+        this._simpleChair(x, z - TILE * 0.45 + 0.7, 0x26282d);
       }
     }
+    // a potted plant at the edge of the cluster
+    this._plant(r.x1 * TILE - 0.9, r.z0 * TILE + 0.9);
   }
 
   _breakRoom(r, cx, cz) {
@@ -608,19 +681,59 @@ export class Level1 {
     counter.position.set(cx, 0.5, r.z0 * TILE + 0.6);
     this.scene.add(counter); this.objects.push(counter);
     this._blockSolid(counter.position.x, counter.position.z, TILE * 2.4, 0.8);
-    // vending machine
+
+    // vending machine + a second (snack) machine beside it
     const vend = new THREE.Mesh(new THREE.BoxGeometry(1.0, 2.0, 0.8),
       new THREE.MeshStandardMaterial({ color: 0x882222, roughness: 0.5,
         emissive: 0x330808, emissiveIntensity: 0.4 }));
     vend.position.set(r.x1 * TILE - 0.3, 1.0, r.z0 * TILE + 0.6);
     this.scene.add(vend); this.objects.push(vend);
-    // small round table + chairs
-    const table = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 0.9, 16),
-      new THREE.MeshStandardMaterial({ color: 0x6a6a60, roughness: 0.7 }));
-    table.position.set(cx, 0.45, cz + 0.5);
-    this.scene.add(table); this.objects.push(table);
-    this._simpleChair(cx - 1.2, cz + 0.5, 0x222428);
-    this._simpleChair(cx + 1.2, cz + 0.5, 0x222428);
+    this._blockSolid(vend.position.x, vend.position.z, 1.0, 0.8);
+    const snack = new THREE.Mesh(new THREE.BoxGeometry(1.0, 2.0, 0.8),
+      new THREE.MeshStandardMaterial({ color: 0x224488, roughness: 0.5,
+        emissive: 0x081633, emissiveIntensity: 0.4 }));
+    snack.position.set(r.x1 * TILE - 1.5, 1.0, r.z0 * TILE + 0.6);
+    this.scene.add(snack); this.objects.push(snack);
+    this._blockSolid(snack.position.x, snack.position.z, 1.0, 0.8);
+
+    // microwave + coffee maker sitting on the counter
+    const microwave = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.5),
+      new THREE.MeshStandardMaterial({ color: 0x2a2c30, roughness: 0.4 }));
+    microwave.position.set(cx - TILE * 0.7, 1.2, r.z0 * TILE + 0.6);
+    const coffee = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.45, 0.35),
+      new THREE.MeshStandardMaterial({ color: 0x1a1a1d, roughness: 0.5 }));
+    coffee.position.set(cx - TILE * 0.7 + 0.7, 1.22, r.z0 * TILE + 0.6);
+    this.scene.add(microwave, coffee); this.objects.push(microwave, coffee);
+
+    // two dining tables, each ringed with chairs
+    const tableMat = new THREE.MeshStandardMaterial({ color: 0x6a6a60, roughness: 0.7 });
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x3a3a36, metalness: 0.4 });
+    const makeTable = (tx, tz) => {
+      const top = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 0.08, 16), tableMat);
+      top.position.set(tx, 0.74, tz);
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 0.74, 10), legMat);
+      leg.position.set(tx, 0.37, tz);
+      this.scene.add(top, leg); this.objects.push(top, leg);
+      this._blockSolid(tx, tz, 1.1, 1.1);
+      this._simpleChair(tx - 1.2, tz, 0x222428);
+      this._simpleChair(tx + 1.2, tz, 0x222428);
+      this._simpleChair(tx, tz - 1.2, 0x222428);
+      this._simpleChair(tx, tz + 1.2, 0x222428);
+    };
+    makeTable(cx - 2.4, cz + 0.6);
+    makeTable(cx + 2.4, cz + 0.6);
+
+    // water cooler, a trash bin, a wall clock and a potted plant
+    this._waterCooler(r.x0 * TILE + 0.8, r.z1 * TILE - 1.0);
+    this._trashBin(cx + TILE * 1.0, r.z0 * TILE + 1.3);
+    this._wallClock(cx - TILE * 1.2, 2.4, r.z0 * TILE + 0.12, 0);
+    this._plant(r.x1 * TILE - 0.9, r.z1 * TILE - 0.9);
+
+    // a staff bulletin board on the side wall
+    this._sign(['STAFF NOTICE', '', 'PLEASE CLEAN UP', 'AFTER YOURSELF'],
+      r.x0 * TILE + 0.12, 1.8, cz, Math.PI / 2,
+      { w: 320, h: 240, bg: '#c7a64e', fg: '#241f0e', border: '#8a7030', size: 30 },
+      1.2, 0.9);
 
     // *** Manager's Keycard sits on the counter ***
     const card = this._makeKeycard(0xe0a83a, 'MGR');
@@ -646,6 +759,14 @@ export class Level1 {
     this.scene.add(mon); this.objects.push(mon);
     this._monitors = this._monitors || [];
     this._monitors.push(mon);
+    // filing cabinet, a guest chair and a plant
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.3, 0.6),
+      new THREE.MeshStandardMaterial({ color: 0x4a4d52, metalness: 0.3, roughness: 0.6 }));
+    cab.position.set(r.x1 * TILE - 0.6, 0.65, r.z0 * TILE + 0.6);
+    this.scene.add(cab); this.objects.push(cab);
+    this._blockSolid(cab.position.x, cab.position.z, 0.7, 0.6);
+    this._simpleChair(cx - 1.4, cz + 1.1, 0x26282d);
+    this._plant(r.x0 * TILE + 0.9, r.z1 * TILE - 0.9);
   }
 
   _storageRoom(r) {
@@ -759,7 +880,9 @@ export class Level1 {
   _buildElevator() {
     const group = new THREE.Group();
     const x = 17 * TILE + TILE / 2;
-    const z = 47 * TILE + TILE - 0.2;     // against the south reception wall
+    // Doors sit on the reception / south-wall boundary; the cabin recesses
+    // south into the shaft tile carved out of the wall (see _layout).
+    const z = 48 * TILE;
     this.exit.position.set(x, 0, z);
 
     const steelMat = new THREE.MeshStandardMaterial({
@@ -777,7 +900,7 @@ export class Level1 {
 
     const OPEN_W = 1.7, OPEN_H = 2.5, FRAME_T = 0.22;
     const CAB_W = OPEN_W + 0.5, CAB_D = 2.0, CAB_H = OPEN_H + 0.25, SHELL = 0.12;
-    const frontZ = 0, backZ = -CAB_D;     // doors face +... cabin recedes toward -Z (south)
+    const frontZ = 0, backZ = -CAB_D;     // doors at the front; cabin recedes to local -Z
 
     const add = (geo, mat, px, py, pz) => {
       const m = new THREE.Mesh(geo, mat); m.position.set(px, py, pz);
@@ -819,9 +942,10 @@ export class Level1 {
     glow.position.set(0, CAB_H - 0.4, backZ / 2);
     group.add(glow);
 
-    // orient: doors face +Z (north, into reception)
+    // orient: rotate 180° so the doors face -Z (north, into the level) and the
+    // cabin recesses toward +Z (south) into the shaft within the wall.
     group.position.set(x, 0, z);
-    group.rotation.y = 0;
+    group.rotation.y = Math.PI;
 
     this.scene.add(group); this.objects.push(group);
     this.exit.mesh = group;
@@ -835,11 +959,13 @@ export class Level1 {
     this.interactables.push({ mesh: rightDoor, type: 'elevator' });
     this.interactables.push({ mesh: leftDoor, type: 'elevator' });
 
-    // collision: block the elevator footprint tiles, keep the doorway open.
-    // The cabin sits on tiles around (16..18, 47..48); only (17,47) doorway open.
-    this._blockBox(x, z - 1.0, OPEN_W + 0.4, CAB_D + 0.4);
-    this.openings.add(`${17},${46}`); // the tile the player boards through
+    // collision: the shaft tile (17,48) is the cabin and the approach tile
+    // (17,47) are passable; (16,48)/(18,48) stay solid walls enclosing it.
+    // Block the strip behind the cabin so the player can't clip through its
+    // back wall into the gap before the building's outer wall.
     this.openings.add(`${17},${47}`);
+    this.openings.add(`${17},${48}`);
+    this._blockSolid(x, 48 * TILE + 3, CAB_W + 0.6, 2.0);
   }
 
   // --------------------------------------------------------------------------
@@ -866,6 +992,56 @@ export class Level1 {
     const back = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.08), mat);
     back.position.set(x, 0.8, z - 0.2);
     this.scene.add(seat, back); this.objects.push(seat, back);
+  }
+
+  /** A small potted plant (non-blocking decor). */
+  _plant(x, z) {
+    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.18, 0.4, 12),
+      new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 0.85 }));
+    pot.position.set(x, 0.2, z);
+    const foliage = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.95, 8),
+      new THREE.MeshStandardMaterial({ color: 0x2f5a32, roughness: 0.95 }));
+    foliage.position.set(x, 0.85, z);
+    this.scene.add(pot, foliage); this.objects.push(pot, foliage);
+  }
+
+  /** A round wall clock (front faces +Z when yaw is 0). */
+  _wallClock(x, y, z, yaw) {
+    const g = new THREE.Group();
+    const face = new THREE.Mesh(new THREE.CircleGeometry(0.28, 24),
+      new THREE.MeshStandardMaterial({ color: 0xf0f0e6, roughness: 0.6 }));
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.03, 8, 24),
+      new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.5 }));
+    const hourHand = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.16, 0.005),
+      new THREE.MeshStandardMaterial({ color: 0x111111 }));
+    hourHand.position.set(0, 0.06, 0.01);
+    const minHand = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.02, 0.005),
+      new THREE.MeshStandardMaterial({ color: 0x111111 }));
+    minHand.position.set(0.045, 0, 0.01);
+    g.add(face, rim, hourHand, minHand);
+    g.position.set(x, y, z); g.rotation.y = yaw || 0;
+    this.scene.add(g); this.objects.push(g);
+  }
+
+  /** A water cooler (blocks the player's footprint). */
+  _waterCooler(x, z) {
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.1, 0.5),
+      new THREE.MeshStandardMaterial({ color: 0xdfe4e8, roughness: 0.5 }));
+    body.position.set(x, 0.55, z);
+    const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.5, 14),
+      new THREE.MeshStandardMaterial({ color: 0x9fd3e8, roughness: 0.25,
+        transparent: true, opacity: 0.6 }));
+    bottle.position.set(x, 1.35, z);
+    this.scene.add(body, bottle); this.objects.push(body, bottle);
+    this._blockSolid(x, z, 0.5, 0.5);
+  }
+
+  /** A small office trash bin (non-blocking decor). */
+  _trashBin(x, z) {
+    const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.16, 0.5, 12),
+      new THREE.MeshStandardMaterial({ color: 0x3a3d42, roughness: 0.7, metalness: 0.2 }));
+    bin.position.set(x, 0.25, z);
+    this.scene.add(bin); this.objects.push(bin);
   }
 
   _leatherChair(x, z, yaw) {
