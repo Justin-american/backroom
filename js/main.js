@@ -71,7 +71,7 @@ ui.onStart(() => beginGameplay());
 
 ui.onRestart(() => {
   completed = false;
-  nearExit = false;
+  resetElevator();
   teardownLevel();
   buildLevel();
   events.start();
@@ -94,25 +94,113 @@ function attachLockEvents() {
 }
 
 // ---------------------------------------------------------------------------
-// Exit interaction
+// Elevator interaction (staged: call -> wait -> board -> ride -> arrive)
 // ---------------------------------------------------------------------------
 let nearExit = false;
 
+// 'idle'    : roaming; show "call" prompt when near the doors
+// 'calling' : button pressed, car is on its way (~3s wait)
+// 'open'    : car arrived, doors open, waiting for the player to board + ride
+// 'rising'  : doors closed, car (and rider) travelling up
+// 'arrived' : reached the top, doors reopen, level complete
+let elevatorState = 'idle';
+let callTimer = 0;
+let arriveTimer = 0;
+let riseStartY = 0;
+
+const CALL_DELAY = 3.0;   // seconds before the car arrives
+const ARRIVE_HOLD = 1.2;  // seconds doors stay open before "complete"
+
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'KeyE' && nearExit && player && player.enabled &&
-      !completed && player.mode === 'walk') {
-    useElevator();
+  if (e.code !== 'KeyE' || !player || !player.enabled || completed ||
+      player.mode !== 'walk') return;
+
+  if (elevatorState === 'idle' && nearExit) {
+    callElevator();
+  } else if (elevatorState === 'open' &&
+             level.isInsideElevator(player.object.position)) {
+    rideUp();
   }
 });
 
-function useElevator() {
-  completed = true;            // lock out further exit prompts/triggers
+function callElevator() {
+  elevatorState = 'calling';
+  callTimer = 0;
+  ui.setExitPrompt('The elevator is on its way&hellip;');
+  ui.showExitPrompt();
+}
+
+function rideUp() {
+  elevatorState = 'rising';
   ui.hideExitPrompt();
   if (events) events.stop();
   if (level) level.setLightLevel(1.0);
-  // Rise above the roof for now (placeholder for going up a floor).
+  riseStartY = player.object.position.y;
   const roofEye = (level.ceilingHeight || 3.2) + 1.7;
   player.rideElevator(roofEye);
+}
+
+function resetElevator() {
+  elevatorState = 'idle';
+  callTimer = 0;
+  arriveTimer = 0;
+  riseStartY = 0;
+  nearExit = false;
+}
+
+function updateElevator(dt) {
+  switch (elevatorState) {
+    case 'idle': {
+      const d = level.distanceToExit(player.object.position);
+      const wasNear = nearExit;
+      nearExit = d <= level.exit.radius;
+      if (nearExit && !wasNear) {
+        ui.setExitPrompt('Press <b>E</b> to call the elevator');
+        ui.showExitPrompt();
+      }
+      if (!nearExit && wasNear) ui.hideExitPrompt();
+      break;
+    }
+    case 'calling': {
+      callTimer += dt;
+      if (callTimer >= CALL_DELAY) {
+        audio.elevatorChime();
+        elevatorState = 'open';
+      }
+      break;
+    }
+    case 'open': {
+      level.setElevatorDoors(true, dt);
+      const inside = level.isInsideElevator(player.object.position);
+      ui.setExitPrompt(inside
+        ? 'Press <b>E</b> to go up'
+        : 'Step inside the elevator');
+      ui.showExitPrompt();
+      break;
+    }
+    case 'rising': {
+      level.setElevatorDoors(false, dt);
+      // Carry the whole car up with the rider so they stay inside it.
+      level.setElevatorHeight(player.object.position.y - riseStartY);
+      if (player.mode === 'roof') {       // reached the target height
+        audio.elevatorChime();
+        arriveTimer = 0;
+        elevatorState = 'arrived';
+      }
+      break;
+    }
+    case 'arrived': {
+      level.setElevatorDoors(true, dt);
+      arriveTimer += dt;
+      if (!completed && arriveTimer >= ARRIVE_HOLD) {
+        completed = true;
+        ui.hideExitPrompt();
+        ui.showComplete();
+        player.unlock();
+      }
+      break;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -136,19 +224,7 @@ function animate() {
     player.update(dt);
     events.update(dt);
 
-    // exit proximity check
-    if (!completed) {
-      const d = level.distanceToExit(player.object.position);
-      const wasNear = nearExit;
-      nearExit = d <= level.exit.radius;
-      if (nearExit && !wasNear) ui.showExitPrompt();
-      if (!nearExit && wasNear) ui.hideExitPrompt();
-    }
-
-    // Open the elevator doors during/after the ride.
-    if (level && (player.mode === 'rising' || player.mode === 'roof')) {
-      level.setElevatorDoors(true, dt);
-    }
+    if (!completed) updateElevator(dt);
   }
 
   if (level) level.update(dt, camera.position, elapsed);

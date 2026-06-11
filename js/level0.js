@@ -667,6 +667,10 @@ export class Level0 {
       slide: leafW,            // how far each leaf travels when opening
       t: 0,                    // 0 = closed, 1 = fully open
     };
+
+    // Interior bounds (local frame) so we can tell when the player is
+    // actually standing inside the car.
+    this.exit.cabin = { width: CAB_W, depth: CAB_D };
   }
 
   /** Animate the elevator doors. open=true slides them apart, false closes. */
@@ -697,6 +701,25 @@ export class Level0 {
     const dx = pos.x - this.exit.position.x;
     const dz = pos.z - this.exit.position.z;
     return Math.sqrt(dx * dx + dz * dz);
+  }
+
+  /**
+   * True when the player is standing inside the elevator car (not just near
+   * the doors). The car interior recedes toward +Z in the elevator's local
+   * frame, so we transform the world position into that frame and test it
+   * against the cabin bounds.
+   */
+  isInsideElevator(pos) {
+    if (!this.exit.mesh || !this.exit.cabin) return false;
+    const local = this.exit.mesh.worldToLocal(pos.clone());
+    const halfW = this.exit.cabin.width / 2 - 0.15;
+    return local.z > 0.2 && local.z < this.exit.cabin.depth - 0.1 &&
+           Math.abs(local.x) < halfW;
+  }
+
+  /** Raise (or reset) the whole elevator car so it travels with the rider. */
+  setElevatorHeight(y) {
+    if (this.exit.mesh) this.exit.mesh.position.y = y;
   }
 
   /** Per-frame updates (player light follows the camera). */

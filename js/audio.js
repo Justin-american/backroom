@@ -152,6 +152,33 @@ export class AudioEngine {
     o.stop(now + 1.5);
   }
 
+  /**
+   * A classic two-tone elevator chime ("ding-dong"): two soft sine tones
+   * with a quick attack and gentle decay. Used when the car arrives and
+   * the doors are about to open.
+   */
+  elevatorChime() {
+    if (!this._ready()) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+
+    const tone = (freq, start, dur) => {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = freq;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, now + start);
+      g.gain.exponentialRampToValueAtTime(0.18, now + start + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+      o.connect(g).connect(this.master);
+      o.start(now + start);
+      o.stop(now + start + dur + 0.05);
+    };
+
+    tone(988, 0, 0.9);      // B5  ("ding")
+    tone(1319, 0.32, 1.0);  // E6  ("dong")
+  }
+
   /** Soften the hum while the lights are off, then restore it. */
   setPowerState(on) {
     if (!this._ready() || !this._buzzGain) return;

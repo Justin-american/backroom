@@ -21,8 +21,9 @@ No frameworks, no TypeScript, no build tools, no npm install required.
   distant/ambient sounds (subtle and rare)
 - **Procedural audio** — a constant fluorescent hum and stingers generated
   with the Web Audio API (no audio files needed)
-- **Exit system** — reach the glowing exit, press `E`, and see
-  **"Level Complete"**
+- **Elevator exit** — call the elevator with `E`, wait for it to arrive
+  (chime + doors open), step inside, press `E` to ride up, then the doors
+  reopen with a chime and you see **"Level Complete"**
 - **Responsive** — resizes to any browser window
 
 ## Controls
@@ -39,8 +40,9 @@ No frameworks, no TypeScript, no build tools, no npm install required.
 
 1. Open the game (see "Run locally" or the GitHub Pages URL below).
 2. Click **Click to Enter** to lock the mouse.
-3. Walk around, soak in the atmosphere, and find the glowing exit.
-4. Stand near the exit and press **`E`** to complete the level.
+3. Walk around, soak in the atmosphere, and find the elevator.
+4. Stand near the elevator and press **`E`** to call it. Wait for it to
+   arrive, step inside, then press **`E`** again to ride up and complete the level.
 
 ## Project structure
 

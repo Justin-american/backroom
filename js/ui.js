@@ -43,6 +43,11 @@ export class UI {
     this.exitPrompt.classList.remove('hidden');
   }
 
+  /** Replace the prompt text (accepts HTML, e.g. for the bold key hint). */
+  setExitPrompt(html) {
+    if (this.exitPrompt) this.exitPrompt.innerHTML = html;
+  }
+
   hideExitPrompt() {
     this.exitPrompt.classList.add('hidden');
   }
